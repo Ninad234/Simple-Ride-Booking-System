@@ -1,4 +1,4 @@
-# Mini Uber Ride Assignment System
+# Simple Ride Booking System
 
 A simplified backend implementation of the ride assignment workflow used by ride-hailing platforms like Uber and Ola.
 
