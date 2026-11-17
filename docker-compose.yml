@@ -1,0 +1,116 @@
+
+services:
+
+  # MongoDB Database
+  mongo:
+    image: mongo:7
+    container_name: uber-mongodb
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mongosh",
+          "--quiet",
+          "--eval",
+          "db.adminCommand('ping').ok"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: uber-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Express API
+  api:
+    build: .
+    container_name: uber-api
+    restart: unless-stopped
+    command: ["npm", "start"]
+    ports:
+      - "5000:5000"
+    environment:
+      PORT: 5000
+      MONGO_URI: mongodb://mongo:27017/uber_clone
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:5000/rides').then(r => process.exit(r.status === 404 || r.status === 400 || r.status === 405 ? 0 : 1)).catch(() => process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Background Ride Worker
+  worker:
+    build: .
+    container_name: uber-worker
+    restart: unless-stopped
+    command: ["npm", "run", "worker"]
+    environment:
+      MONGO_URI: mongodb://mongo:27017/uber_clone
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Billing Consumer
+  billing:
+    build: .
+    container_name: uber-billing
+    restart: unless-stopped
+    command: ["npm", "run", "billing"]
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # Operations Consumer
+  operations:
+    build: .
+    container_name: uber-operations
+    restart: unless-stopped
+    command: ["npm", "run", "operations"]
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  mongo_data:
+  redis_data:
